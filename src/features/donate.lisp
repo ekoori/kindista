@@ -1,4 +1,4 @@
-;;; Copyright 2012-2015 CommonGoods Network, Inc.
+;;; Copyright 2012-2021 CommonGoods Network, Inc.
 ;;;
 ;;; This file is part of Kindista.
 ;;;
@@ -115,9 +115,11 @@
            (:br)
            "Kindista"
            (:br)
-           "PO Box 5034"
+           "C/O CommonGoods Network"
            (:br)
-           "Eugene, OR 97405")
+           "7929 SE 106th Avenue"
+           (:br)
+           "Portland, OR 97266")
       (:p "Please make sure to include your email address so we can send you a thank you!"))))
 
 (defun donate-once-1 ()
@@ -144,9 +146,11 @@
            (:br)
            "Kindista"
            (:br)
-           "PO Box 5034"
+           "C/O CommonGoods Network"
            (:br)
-           "Eugene, OR 97405")
+           "7929 SE 106th Avenue"
+           (:br)
+           "Portland, OR 97266")
       (:p "Please make sure to include your email address so we can send you a thank you!")   )))
 
 (defun donate-dialog-2 (&optional show-error)

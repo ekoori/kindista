@@ -1,4 +1,4 @@
-;;; Copyright 2012-2017 CommonGoods Network, Inc.
+;;; Copyright 2012-2023 CommonGoods Network, Inc.
 ;;;
 ;;; This file is part of Kindista.
 ;;;
@@ -609,7 +609,7 @@
                               (:button :type "submit"
                                :class "simple-link no-padding"
                                :name "resend-code"
-                               :value email
+                               :value invite-id
                                "Resend code")
                               (:span "|")
                               (:button :class "simple-link red"
@@ -1174,7 +1174,7 @@
       :url (strcat "/groups/" groupid)
       :item-id new-admin
       :post-parameter "confirm-new-admin"
-      :details (s+ "At this time, each group account can have a maximum of three admins. "
+      :details (s+ "At this time, each group account can have a maximum of four admins. "
                    "We recommend that you only give admin privileges to people who are "
                    "actually in leadership or administrative roles within this group. "
                    "Once you make "
@@ -1246,7 +1246,7 @@
                    (:p (:a :href (strcat "/groups/" groupid "/invite-members")
                          "+add group members"))))
 
-                ((< (length (getf group :admins)) 3)
+                ((< (length (getf group :admins)) 4)
                  (htm
                    (:form :method "get"
                           :action "/settings/admin-roles"
@@ -1454,6 +1454,9 @@
         (acond
          ((post-parameter "address")
           (cond
+            ((string= it "")
+             ; try-again, we need an actual address
+             (see-other (referer)))
             ((and groupid
                    (string= it (getf entity :address))
                    (getf entity :location)
@@ -1709,7 +1712,7 @@
                                    (post-parameter "token")))
 
           ((post-parameter "resend-code")
-           (let* ((id (parse-integer (post-parameter "invitation-id")))
+           (let* ((id (parse-integer (post-parameter "resend-code")))
                   (invitation (db id))
                   (email (getf invitation :recipient-email)))
              (cond

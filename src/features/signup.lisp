@@ -1,4 +1,4 @@
-;;; Copyright 2012-2017 CommonGoods Network, Inc.
+;;; Copyright 2012-2023 CommonGoods Network, Inc.
 ;;;
 ;;; This file is part of Kindista.
 ;;;
@@ -48,7 +48,8 @@
         (str flash))
       (when error (htm (:div :class "signup flash err" (str error))))
       (:div :id "signup" (str body)))
-    :hide-menu t))
+    :hide-menu t
+    ))
 
 (defun signup-page (&key error name email email2)
   (signup-base
@@ -199,81 +200,7 @@
   (cond
     ;; Facebook signup
     ((and fb-token-data (not invitation))
-      (let* ((fb-data (get-facebook-user-data fb-token))
-             (fb-id (safe-parse-integer (getf fb-data :id)))
-             (raw-fb-email (getf fb-data :email))
-             (fb-email (when (scan +email-scanner+ raw-fb-email)
-                         raw-fb-email))
-             (fb-name (getf fb-data :name))
-             (existing-k-id (gethash fb-id *facebook-id-index*))
-             (existing-k-email-id (gethash fb-email *email-index*)))
-        (cond
-          (existing-k-id
-            (flash (strcat* "There is already an existing Kindista acccount for "
-                            (db existing-k-id :name)
-                            ". You are now signed in."))
-            (post-login :fb-token-data fb-token-data
-                        :fb-data fb-data))
-
-          (existing-k-email-id
-            (let* ((userid existing-k-email-id)
-                   (user (db userid))
-                   (new-name)
-                   (new-data))
-              (unless (and (eql fb-id (getf user :fb-id))
-                           (string= fb-token (getf user :fb-token))
-                           (eql fb-expires (getf user :fb-expires)))
-                (modify-db userid :fb-id fb-id
-                                  :fb-token fb-token
-                                  :fb-expires fb-expires)
-                (with-locked-hash-table (*facebook-id-index*)
-                  (setf (gethash fb-id *facebook-id-index*) userid)))
-
-              (unless (find fb-name (getf user :aliases) :test #'equalp)
-                (setf new-name fb-name)
-                (asetf new-data
-                       (append
-                         (list :aliases
-                               (append (getf user :aliases)
-                                       (list fb-name)))
-                         it)))
-              (unless (getf user :avatar)
-                (asetf new-data
-                       (append
-                         (list :avatar (save-facebook-profile-picture-to-avatar userid))
-                         it)))
-              (apply #'modify-db userid new-data)
-              (when new-name (reindex-person-names userid))
-
-              (register-login userid)))
-
-          ((not fb-email)
-           (flash "Kindista needs a valid email address so we can let you know when someone is replying to an offer or request that you post. After you sign up, you can edit which types of notifications you want to receive from Kindista on your settings page." :error t)
-           (see-other "/signup?rerequest-email-permission=t"))
-          (t
-           (let* ((existing-invitation (find email
-                                             (unconfirmed-invites +kindista-id+)
-                                             :key #'(lambda (item) (getf item :email))
-                                             :test #'string=))
-                  (invite-id (getf existing-invitation :id))
-                  (invite-data (db invite-id))
-                  (new-invite-id (unless existing-invitation
-                                   (create-invitation fb-email
-                                                      :fb-id fb-id
-                                                      :fb-token fb-token
-                                                      :fb-expires fb-expires
-                                                      :host +kindista-id+
-                                                      :name fb-name))))
-             (awhen invite-data
-               (unless (and (eql fb-id (getf invite-data :fb-id))
-                            (string= fb-token (getf invite-data :fb-token))
-                            (eql fb-expires (getf invite-data :fb-expires)))
-                 (modify-db invite-id :fb-id fb-id
-                                      :fb-token fb-token
-                                      :fb-expires fb-expires))
-               (resend-invitation invite-id))
-             (signup-confirmation-sent (or invite-id new-invite-id)
-                                       fb-email))))))
+     (facebook-signup fb-token-data))
 
     ;; Invitations
     (invitation
@@ -307,7 +234,8 @@
           ((gethash email *email-index*)
             (try-again "The email address you have entered already belongs to another Kindista member. Please try again, or contact us if this really is your email address."))
 
-          ((< (getf invitation :valid-until) (get-universal-time))
+          ((and (numberp (getf invitation :valid-until))
+             (< (getf invitation :valid-until) (get-universal-time)))
             (try-again "Your invitation has expired. Please contact the person who invited you to join Kindista and request another invitation."))
 
           ((not (and (< 0 (length name))
@@ -342,6 +270,8 @@
                                :email email
                                :email2 (when (equalp email email2) email2))))
           (cond
+            ((or (not id) (not valid-email-invites))
+                        (try-again "In response to malicous attacks on our system, and our limited volunteer development resources, Kindista is currently Invite Only. Please use the email address in your invitation to sign up. If you have not yet been invited, you must first receive an invitation from a current Kindista member."))
             (group-p
               (try-again "This form is for creating personal accounts only. Once you create your personal account you can create group accounts from the \"Groups\" section of Kindista. If you ignore this warning you will create mass confusion for our community and will not be able to invite people to join your group. (Also we will probably end up deleting group accounts created with this form.)"))
 
@@ -378,6 +308,72 @@
                                             :expires (* 90 +day-in-seconds+)))))
 
                (signup-confirmation-sent id email))))))))
+
+(defun facebook-signup (fb-token-data)
+  (let* ((fb-token (getf fb-token-data :access--token))
+         (fb-expires (when fb-token-data
+                           (+ (get-universal-time)
+                              (safe-parse-integer (getf fb-token-data :expires--in)))))
+         (fb-data (get-facebook-user-data fb-token))
+         (fb-id (safe-parse-integer (getf fb-data :id)))
+         (raw-fb-email (getf fb-data :email))
+         (fb-email (when (scan +email-scanner+ raw-fb-email)
+                     raw-fb-email))
+         (fb-name (getf fb-data :name))
+         (existing-k-id (gethash fb-id *facebook-id-index*))
+         (existing-k-email-id (gethash fb-email *email-index*))
+         (host (db (caar (gethash fb-email *invitation-index*)) :host)))
+    (cond
+      (existing-k-id
+        (flash (strcat* "There is already an existing Kindista acccount for "
+                        (db existing-k-id :name)
+                        ". You are now signed in."))
+        (post-login :fb-token-data fb-token-data
+                    :fb-data fb-data))
+
+      (existing-k-email-id
+        (let* ((userid existing-k-email-id)
+               (user (db userid))
+               (new-name)
+               (new-data))
+          (unless (and (eql fb-id (getf user :fb-id))
+                       (string= fb-token (getf user :fb-token))
+                       (eql fb-expires (getf user :fb-expires)))
+            (modify-db userid :fb-id fb-id
+                              :fb-token fb-token
+                              :fb-expires fb-expires)
+            (with-locked-hash-table (*facebook-id-index*)
+              (setf (gethash fb-id *facebook-id-index*) userid)))
+
+          (unless (find fb-name (getf user :aliases) :test #'equalp)
+            (setf new-name fb-name)
+            (asetf new-data
+                   (append
+                     (list :aliases
+                           (append (getf user :aliases)
+                                   (list fb-name)))
+                     it)))
+          (unless (getf user :avatar)
+            (asetf new-data
+                   (append
+                     (list :avatar (save-facebook-profile-picture-to-avatar userid))
+                     it)))
+          (apply #'modify-db userid new-data)
+          (when new-name (reindex-person-names userid))
+
+          (register-login userid)))
+
+      ((not fb-email)
+       (flash "Kindista needs a valid email address so we can let you know when someone is replying to an offer or request that you post. After you sign up, you can edit which types of notifications you want to receive from Kindista on your settings page." :error t)
+       (see-other "/signup?rerequest-email-permission=t"))
+      (t
+        (create-new-person-account fb-name
+                                   fb-email
+                                   :host (or host +kindista-id+)
+                                   :fb-id fb-id
+                                   :fb-token fb-token
+                                   :fb-expires fb-expires)
+        (see-other "/home")))))
 
 (defun create-new-person-account
   (name

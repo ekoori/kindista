@@ -1,4 +1,4 @@
-;;; Copyright 2012-2019 CommonGoods Network, Inc.
+;;; Copyright 2012-2021 CommonGoods Network, Inc.
 ;;;
 ;;; This file is part of Kindista.
 ;;;
@@ -230,7 +230,7 @@ notification-description
                              color: #799f56;
                              font-size: 22px;
                              font-weight: 500;"
-                     (:img :src "http://media.kindista.org/logo.png" :width 136 :height 26))))
+                     (:img :src (s+ *email-url* "media/logo.png") :width 136 :height 26))))
 
           (:tr (:td :style "padding: 10px;
                             color: #000000;
